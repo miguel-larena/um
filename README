@@ -1,18 +1,15 @@
 /*****************************************************************************/
 
-                        UNIVERSAL MACHINE HOMEWORK
-                        --------------------------
+                              UNIVERSAL MACHINE 
+                              -----------------
 
     By: Jacob Zimmerman and Miguel Larena
-    Date: April 14, 2022
+    April 14, 2022
 
     Acknowledgements:
-          gcc byteswap builtin command discovered from stackoverflow, also
-          thanks to the TAs
+          gcc byteswap builtin command discovered from stackoverflow
 
-    Correctness:
-          Everything has been correctly implemented to the best of our
-          knowledge.
+    Everything has been correctly implemented to the best of our knowledge.
 
 
     Compile with:
