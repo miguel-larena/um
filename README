@@ -1,0 +1,292 @@
+/*****************************************************************************/
+
+                        UNIVERSAL MACHINE HOMEWORK
+                        --------------------------
+
+    By: Jacob Zimmerman and Miguel Larena
+    Date: April 14, 2022
+
+    Acknowledgements:
+          gcc byteswap builtin command discovered from stackoverflow, also
+          thanks to the TAs
+
+    Correctness:
+          Everything has been correctly implemented to the best of our
+          knowledge.
+
+
+    Compile with:
+          make um
+
+-------------------------------------------------------------------------------
+
+    Architecture and Design
+    -----------------------
+
+    Design Changes:
+
+        * There were significant departures in architecture from our design
+          document, exclusively in the virtual memory implementation.
+
+        * Our virtual memory now uses a single sequence to store all segments
+          and a stack to store IDs.
+
+        * We are no longer slicing and reusing memory after unmapping and we
+          are not using a page table to make a more segment storing
+          more efficient.
+
+        * We are not storing lengths in a separate ADT either, we have
+          decided to hide lengths in a hidden word in each segment
+
+    Architecture:
+
+        We have five modules, with um.h being the client facing module.
+        The diagram below may help
+
+        Client -> um.h -> machine.h -> memory.h -> memcycle.h
+                            |     \      |
+                            |      \     |
+                            |----> operations.h
+
+        => UM Module
+        ------------
+            Dependencies:
+                - machine.h
+
+            Responsibilities:
+                - Initialize a Machine_T virtual machine
+                - Load program into virtual machine memory
+                - Operate machine run loop:
+                    1. next instruction
+                    2. execute instruction
+                    3. stop if halt
+
+            Use Functions:
+                - UM_run
+
+        => Machine Module
+        -----------------
+            Dependencies:
+                - memory.h
+                - operations.h
+
+            Responsibilities:
+                - Contain the machine state struct, which is the following
+                    1. Memory
+                    2. Registers
+                    3. IO device
+                    4. program count
+                - Get next instruction
+                - Parse instruction
+                - Call operation
+                - Signal to UM Module to halt
+
+            Use Functions:
+                - Machine_next
+                - Machine_execute (instruction)
+
+        => Operations Module
+        --------------------
+            Dependencies:
+                - machine.h
+                - memory.h
+
+            Responsibilities:
+                - Manipulate the machine state struct given an instruction
+
+            Secrets known:
+                - This module knows about the hidden word in each segment
+                  that indicates segment length
+
+            Use Functions:
+                - call one of 14 instructions (ideally via function pointer)
+
+        => Memory Module
+        ----------------
+            Dependencies:
+                memcycle.h
+
+            Responsibilities:
+                - Map and unmap segments
+                - Provide access to segment data
+                - Re-use segments in an efficient ways
+                - Clean up all memory used
+
+            Secrets:
+                - Provide access to segment length via hidden word
+
+            Use Functions:
+                 - Memory_map (length)
+                 - Memory_unmap (id)
+                 - Memory_at (id)
+                 - Memory_replace (id, new_segment)
+                    safely swap the segment at a given id
+
+        => Memcycle Module
+        ------------------
+            Responsibilities:
+                - Track unmapped segments
+                - Return available segments for re-use
+                - Operate independent of any other modules
+
+
+        Here is the diagram again:
+        --------------------------
+        Client -> um.h -> machine.h -> memory.h -> memcycle.h
+                            |     \      |
+                            |      \     |
+                            |---> operations.h
+
+-------------------------------------------------------------------------------
+
+    Performance
+    -----------
+
+        We estimate that the program will take 1 seconds to execute
+        fifty million instructions.
+
+        We tested this by executing 2113497561 instructions from sandmark.umz,
+        which took 43.92 seconds.
+
+-------------------------------------------------------------------------------
+
+    Testing
+    -------
+
+        halt-verbose:
+        ------------
+        Tests if halt works by calling halt and then loading values into
+        registers and sending them to output.
+
+        print-six:
+        ---------
+        Tests add and output by loading 48 and 6 into the registers,
+        adding the values and storing the result. Outputs the result,
+        which should be digit 6, then halts.
+
+        print-string:
+        ------------
+        Tests output, segload, and segstore by loading each character from
+        a string in current segment into register and printing.
+
+        subtract:
+        ---------
+        Tests subtraction by adding -10 to ASCII value of 'z'. Output is 'p'.
+
+        math:
+        -----
+        Tests add, multiply, Bitwise NAND, division, and conditional move by
+        performing respective operations on the same register. Output is 'n'.
+
+        everything-bagel:
+        -----------------
+        A more comprehensive version of math test that includes load program,
+        conditional move, segmented load, and segmented store.
+
+        io:
+        ---
+        Tests output edge cases by outputting all ASCII values from 0 to 255,
+        inclusive, and then -1 and 256.
+
+        map-unmap-edge:
+        ---------------
+        Tests an edge case for map and unmap when the segment is length 0.
+        Attempts to segmented load after map. There should be no output.
+
+        map-huge:
+        ---------
+        Stress tests map and unmap by mapping a segment of 10000 words, and
+        immediately unmapping.
+
+        divisor-big:
+        ------------
+        Tests case for divide when the divisor is larger than the dividend.
+        Adds an arbitrary value to force result to a readable ASCII
+        value and prints to output.
+
+        divisor-0:
+        ----------
+        Tests case for divide when the divisor is 0. Throws a floating
+        point exception.
+
+        loop:
+        -----
+        Tests case where jumps result in an infinite loop.
+
+        cond-test:
+        ----------
+        Tests to verify that the conditional move works when condition is false
+        and true.
+
+        jump-edge:
+        ----------
+        This test verifies that the jump command (ie load program to same
+        segment), leads to exactly the right spot, not before or after.
+
+        load-prog:
+        ----------
+        Tests program load by duplicating a segment command.
+        The test does the following:
+          store a series of instructions in a new segment, these instructions
+          are print('z') and halt
+
+          the main program says to print('a') then load program at segment 2
+          then halt
+
+          since the program prints az it avoiding the halt and the copy is
+          working correctly.
+
+    Failure Modes:
+    --------------
+        Failure modes were not tested intentionally, we did find segmentation
+        faults when using out of bounds accessing and division by zero.
+
+        They did what they are supposed to, which is fail.
+
+        Other failure modes were not tested. They will also probably fail.
+
+    Pre-given tests
+    ---------------
+
+        We successfully executed advent.umz and codex.umz as well as
+        midmark.um.
+
+        Using codex.umz we were able to verify the EOF character edge case.
+
+        We used cat.um with a file called chars.0 that contained every single
+        character 0-255 and -1 and 256 to try printing the result, this test
+        was successful and the result can be verified via hexdump.
+
+    Architecture tests
+    ------------------
+        A lot of our tests were performed using C code and main functions that
+        interfaced with the innerworkings of the UM.
+
+        By using C we were able to perform some stress tests like asking for
+        10,000 large maps and unmaps in various orders.
+
+        We also tested the operations in a similar way to make sure they
+        modify the register contents in the correct way.
+
+        Because of this we could verify the program works with edge cases
+        before making the tests into .um binary executable. Many of our tests
+        were too complicated to implement in .um so we feel confident in our
+        C versions.
+
+        Additionally because of the modularity of our program, specifically
+        the operations.h programs, we were able to make it so that the only
+        difference between our C tests and .um tests is the bit unpacking
+        of the instructions.
+-------------------------------------------------------------------------------
+
+    We spent about 10 hours analyzing the assignment.
+
+    We spent about 10 hours preparing our design.
+
+    We spent about 20 hours solving the problems after our analysis.
+
+/*****************************************************************************/
+
+    Thank you for taking the time to read this. <3
+
+/*****************************************************************************/
